@@ -3,6 +3,7 @@
 #include <iostream>
 #include <sstream>
 #include <fstream>
+#include <filesystem>
 
 // Definición de la estructura del i-nodo
 struct Inode {
@@ -127,74 +128,36 @@ void moveInode(Inode* &root, std::string name, Inode* newParent) {
     }
 }
 
-void saveInode(std::ofstream& file, Inode* inode, int level = 0) {
-    if (file.is_open()) {
-        for(int i = 0; i < level; i++) {
-            file << "    ";
-        }
-        file << inode->name;
-        if(inode->canHaveChildren) {
-            file << "{\n";
-            for (Inode* child : inode->children) {
-                saveInode(file, child, level + 1);
-            }
-            for(int i = 0; i < level; i++) {
-                file << "    ";
-            }
-            file << "}\n";
-        } else {
-            file << "\n";
+void saveInode(std::filesystem::path path, Inode* inode) {
+    if (inode->canHaveChildren) {
+        std::filesystem::create_directory(path);
+        for (Inode* child : inode->children) {
+            saveInode(path / child->name, child);
         }
     } else {
-        std::cerr << "Unable to open file for writing.\n";
+        std::ofstream file(path);
     }
 }
 
 void saveInodes(Inode* root) {
-    std::ofstream file("inodes.txt");
-    saveInode(file, root);
+    saveInode("C:/Users/victo/Desktop/Tarea3SO/inodes", root);
+}
+
+Inode* loadInode(std::filesystem::path path) {
+    Inode* inode = new Inode;
+    inode->name = path.filename().string();
+    inode->canHaveChildren = std::filesystem::is_directory(path);
+    if (inode->canHaveChildren) {
+        for (const auto& entry : std::filesystem::directory_iterator(path)) {
+            Inode* child = loadInode(entry.path());
+            addChild(inode, child);
+        }
+    }
+    return inode;
 }
 
 Inode* loadInodes() {
-    std::ifstream file("inodes.txt");
-    if (!file) {
-        return createDirectory("/", "rwx");
-    }
-
-    Inode* root = nullptr;
-    Inode* current = nullptr;
-    std::string line;
-    while (std::getline(file, line)) {
-        int level = 0;
-        while (line[level] == ' ') {
-            level++;
-        }
-        line = line.substr(level);
-        if (line == "{") {
-            continue;
-        } else if (line == "}") {
-            if (current) {
-                current = current->parent;
-            } else {
-                std::cerr << "Error: Attempt to move up from root directory.\n";
-            }
-        } else {
-            Inode* node = new Inode;
-            node->name = line;
-            node->canHaveChildren = line.back() == '{';
-            if (node->canHaveChildren) {
-                node->name.pop_back();
-            }
-            if (current) {
-                addChild(current, node);
-            } else {
-                root = node;
-            }
-            current = node;
-        }
-    }
-
-    return root;
+    return loadInode("C:/Users/victo/Desktop/Tarea3SO/inodes");
 }
 
 int main() {
@@ -234,7 +197,6 @@ int main() {
             if (inode != nullptr) {
                 renameInode(inode, newName);
             }
-            saveInodes(root);
         } else if (command == "move") {
             std::string name, newParentName;
             iss >> name >> newParentName;
@@ -242,7 +204,6 @@ int main() {
             if (newParent != nullptr) {
                 moveInode(root, name, newParent);
             }
-            saveInodes(root);
         } else if (command == "changePermissions") {
             std::string name, permissions;
             iss >> name >> permissions;
@@ -250,7 +211,6 @@ int main() {
             if (inode != nullptr) {
                 changePermissions(inode, permissions);
             }
-            saveInodes(root);
         } else if (command == "getMetadata") {
             std::string name;
             iss >> name;
