@@ -40,12 +40,37 @@ Inode* createDirectory(std::string name, std::string permissions) {
     return createInode(name, permissions, true);
 }
 
-// Función para renombrar un i-nodo
-void renameInode(Inode* inode, std::string newName) {
-    inode->name = newName;
+// Función para encontrar un i-nodo por su nombre
+Inode* findInode(Inode* root, std::string name) {
+    std::filesystem::path path = "C:/Users/victo/Desktop/Tarea3SO/inodes/" + name;
+    if (!std::filesystem::exists(path)) {
+        return nullptr;
+    }
+    if (root->name == name) {
+        return root;
+    }
+    for (Inode* child : root->children) {
+        Inode* found = findInode(child, name);
+        if (found != nullptr) {
+            return found;
+        }
+    }
+    return nullptr;
 }
 
 
+// Función para renombrar un i-nodo
+void renameInode(Inode* &root, std::string oldName, std::string newName) {
+    Inode* toRename = findInode(root, oldName);
+    if (toRename == nullptr) {
+        std::cout << "Inode not found.\n";
+        return;
+    }
+    std::filesystem::path oldPath = "C:/Users/victo/Desktop/Tarea3SO/inodes/" + oldName;
+    std::filesystem::path newPath = "C:/Users/victo/Desktop/Tarea3SO/inodes/" + newName;
+    std::filesystem::rename(oldPath, newPath); // Cambiar el nombre del archivo o directorio
+    toRename->name = newName;
+}
 
 // Función para cambiar los permisos de un i-nodo
 void changePermissions(Inode* inode, std::string newPermissions) {
@@ -82,19 +107,6 @@ Inode* changeDirectory(Inode* currentDirectory, Inode* newDirectory) {
     return newDirectory;
 }
 
-// Función para encontrar un i-nodo por su nombre
-Inode* findInode(Inode* root, std::string name) {
-    if (root->name == name) {
-        return root;
-    }
-    for (Inode* child : root->children) {
-        Inode* found = findInode(child, name);
-        if (found != nullptr) {
-            return found;
-        }
-    }
-    return nullptr;
-}
 
 // Función para eliminar un i-nodo
 void deleteInode(Inode* &root, std::string name) {
@@ -103,9 +115,11 @@ void deleteInode(Inode* &root, std::string name) {
         std::cout << "Inode not found.\n";
         return;
     }
-    for (auto it = root->children.begin(); it != root->children.end(); ++it) {
+    Inode* parent = toDelete->parent;
+    for (auto it = parent->children.begin(); it != parent->children.end(); ++it) {
         if (*it == toDelete) {
-            root->children.erase(it);
+            parent->children.erase(it);
+            std::filesystem::remove_all("C:/Users/victo/Desktop/Tarea3SO/inodes/" + toDelete->name); // Delete the file or directory
             delete toDelete;
             return;
         }
@@ -123,11 +137,15 @@ void moveInode(Inode* &root, std::string name, Inode* newParent) {
         if (*it == toMove) {
             root->children.erase(it);
             newParent->children.push_back(toMove);
+            std::filesystem::path oldPath = "C:/Users/victo/Desktop/Tarea3SO/inodes/" + toMove->name;
+            std::filesystem::path newPath = "C:/Users/victo/Desktop/Tarea3SO/inodes/" + newParent->name + "/" + toMove->name;
+            std::filesystem::rename(oldPath, newPath); // Move the file or directory
             return;
         }
     }
 }
 
+// Función para guardar los i-nodos en una carpeta de forma fisica
 void saveInode(std::filesystem::path path, Inode* inode) {
     if (inode->canHaveChildren) {
         std::filesystem::create_directory(path);
@@ -143,6 +161,7 @@ void saveInodes(Inode* root) {
     saveInode("C:/Users/victo/Desktop/Tarea3SO/inodes", root);
 }
 
+// Función para cargar los i-nodos desde una carpeta de forma fisica
 Inode* loadInode(std::filesystem::path path) {
     Inode* inode = new Inode;
     inode->name = path.filename().string();
@@ -185,18 +204,18 @@ int main() {
             iss >> name >> permissions;
             Inode* newNode = createDirectory(name, permissions);
             addChild(currentDirectory, newNode);
+            saveInodes(root);
         } else if (command == "touch") {
             std::string name, permissions;
             iss >> name >> permissions;
             Inode* newNode = createFile(name, permissions);
             addChild(currentDirectory, newNode);
+            saveInodes(root);
         } else if (command == "rename") {
             std::string oldName, newName;
             iss >> oldName >> newName;
-            Inode* inode = findInode(root, oldName);
-            if (inode != nullptr) {
-                renameInode(inode, newName);
-            }
+            renameInode(root, oldName, newName);
+            saveInodes(root);
         } else if (command == "move") {
             std::string name, newParentName;
             iss >> name >> newParentName;
@@ -204,6 +223,7 @@ int main() {
             if (newParent != nullptr) {
                 moveInode(root, name, newParent);
             }
+            saveInodes(root);
         } else if (command == "changePermissions") {
             std::string name, permissions;
             iss >> name >> permissions;
@@ -211,6 +231,7 @@ int main() {
             if (inode != nullptr) {
                 changePermissions(inode, permissions);
             }
+            saveInodes(root);
         } else if (command == "getMetadata") {
             std::string name;
             iss >> name;
@@ -224,6 +245,7 @@ int main() {
             std::string name;
             iss >> name;
             deleteInode(root, name);
+            saveInodes(root);
         } else if (command == "cd") {
             std::string name;
             iss >> name;
